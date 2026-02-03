@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as qrcode from 'qrcode-terminal';
 import chalk from 'chalk';
 import { Member } from '../types';
-import { phoneFromJid, isGroupJid } from '../utils/phone';
+import { phoneFromJid } from '../utils/phone';
 
 const AUTH_DIR = path.resolve(process.cwd(), 'auth', 'whatsapp');
 

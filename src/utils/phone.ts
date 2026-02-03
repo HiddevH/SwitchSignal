@@ -10,8 +10,9 @@ export function normalizePhone(input: string, defaultRegion = 'NL'): string {
   // Strip WhatsApp JID suffix
   let cleaned = input.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '');
 
-  // If it's purely digits (no +), add + prefix for parsing
-  if (/^\d+$/.test(cleaned)) {
+  // If it's purely digits and looks like an international number (not starting with 0),
+  // add + prefix for parsing. Local numbers starting with 0 should be parsed with region.
+  if (/^\d+$/.test(cleaned) && !cleaned.startsWith('0')) {
     cleaned = '+' + cleaned;
   }
 

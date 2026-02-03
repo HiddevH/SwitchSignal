@@ -25,7 +25,7 @@ export class SignalService {
       const res = await this.client.get('/v1/about');
       console.log(chalk.green(`Signal API version: ${res.data.versions?.[0] || 'unknown'}`));
       return true;
-    } catch (err) {
+    } catch {
       console.log(
         chalk.red('Cannot reach Signal API. Is the Docker container running on port 8080?')
       );
