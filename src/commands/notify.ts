@@ -36,8 +36,8 @@ export async function notifyCommand(options: { nudge?: boolean } = {}): Promise<
       name: 'language',
       message: 'Message language:',
       choices: [
-        { name: 'Dutch (Nederlands)', value: 'nl' },
         { name: 'English', value: 'en' },
+        { name: 'Dutch (Nederlands)', value: 'nl' },
       ],
     },
   ]);
@@ -184,8 +184,8 @@ async function nudgeCommand(): Promise<void> {
       name: 'language',
       message: 'Message language:',
       choices: [
-        { name: 'Dutch (Nederlands)', value: 'nl' },
         { name: 'English', value: 'en' },
+        { name: 'Dutch (Nederlands)', value: 'nl' },
       ],
     },
   ]);

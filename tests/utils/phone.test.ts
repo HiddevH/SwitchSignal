@@ -1,4 +1,4 @@
-import { normalizePhone, phoneFromJid, isGroupJid } from '../../src/utils/phone';
+import { normalizePhone, phoneFromJid, isGroupJid, regionFromPhone } from '../../src/utils/phone';
 
 describe('normalizePhone', () => {
   it('normalizes a full international number with +', () => {
@@ -43,13 +43,35 @@ describe('normalizePhone', () => {
     expect(normalizePhone('4915112345678@s.whatsapp.net', 'DE')).toBe('+4915112345678');
   });
 
-  it('defaults to NL region', () => {
-    // A Dutch local number should work with default region
-    expect(normalizePhone('0612345678')).toBe('+31612345678');
+  it('handles local number with explicit region', () => {
+    expect(normalizePhone('0612345678', 'NL')).toBe('+31612345678');
+    expect(normalizePhone('02012345678', 'GB')).toBe('+442012345678');
+    expect(normalizePhone('015112345678', 'DE')).toBe('+4915112345678');
   });
 
   it('handles number that is already E.164', () => {
     expect(normalizePhone('+31687654321')).toBe('+31687654321');
+  });
+
+  it('works without region for international numbers', () => {
+    // International numbers with + should always work regardless of region
+    expect(normalizePhone('+14155551234')).toBe('+14155551234');
+    expect(normalizePhone('+442012345678')).toBe('+442012345678');
+    expect(normalizePhone('+81312345678')).toBe('+81312345678');
+  });
+
+  it('works without region for WhatsApp JIDs (international format)', () => {
+    // WhatsApp JIDs always use international format, no region needed
+    expect(normalizePhone('14155551234@s.whatsapp.net')).toBe('+14155551234');
+    expect(normalizePhone('442012345678@s.whatsapp.net')).toBe('+442012345678');
+  });
+
+  it('handles Brazilian number', () => {
+    expect(normalizePhone('+5511912345678', 'BR')).toBe('+5511912345678');
+  });
+
+  it('handles Indian number', () => {
+    expect(normalizePhone('+919876543210', 'IN')).toBe('+919876543210');
   });
 });
 
@@ -65,6 +87,40 @@ describe('phoneFromJid', () => {
   it('handles a JID that is just a number', () => {
     const result = phoneFromJid('31612345678');
     expect(result).toBe('+31612345678');
+  });
+});
+
+describe('regionFromPhone', () => {
+  it('detects NL from a Dutch number', () => {
+    expect(regionFromPhone('+31612345678')).toBe('NL');
+  });
+
+  it('detects US from an American number', () => {
+    expect(regionFromPhone('+14155551234')).toBe('US');
+  });
+
+  it('detects GB from a British number', () => {
+    expect(regionFromPhone('+442012345678')).toBe('GB');
+  });
+
+  it('detects DE from a German number', () => {
+    expect(regionFromPhone('+4915112345678')).toBe('DE');
+  });
+
+  it('detects BR from a Brazilian number', () => {
+    expect(regionFromPhone('+5511912345678')).toBe('BR');
+  });
+
+  it('detects JP from a Japanese number', () => {
+    expect(regionFromPhone('+81312345678')).toBe('JP');
+  });
+
+  it('detects IN from an Indian number', () => {
+    expect(regionFromPhone('+919876543210')).toBe('IN');
+  });
+
+  it('returns undefined for invalid input', () => {
+    expect(regionFromPhone('not-a-number')).toBeUndefined();
   });
 });
 

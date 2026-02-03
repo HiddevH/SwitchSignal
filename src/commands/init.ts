@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { WhatsAppService } from '../services/whatsapp';
 import { SignalService } from '../services/signal';
+import { regionFromPhone } from '../utils/phone';
 
 export async function initCommand(): Promise<void> {
   console.log(chalk.bold('\n=== SwitchSignal — Initialize ===\n'));
@@ -46,10 +47,10 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 'signalNumber',
-      message: 'Enter your Signal phone number (E.164 format, e.g. +31612345678):',
+      message: 'Enter your Signal phone number (E.164 format, e.g. +14155551234):',
       validate: (input: string) => {
-        if (/^\+\d{10,15}$/.test(input)) return true;
-        return 'Please enter a valid phone number in E.164 format (e.g. +31612345678)';
+        if (/^\+\d{7,15}$/.test(input)) return true;
+        return 'Please enter a valid phone number in E.164 format (e.g. +14155551234)';
       },
     },
   ]);
@@ -76,8 +77,18 @@ export async function initCommand(): Promise<void> {
 
   console.log(chalk.green('Signal API: Ready!\n'));
 
+  // Auto-detect region from Signal phone number
+  const detectedRegion = regionFromPhone(signalNumber);
+  if (detectedRegion) {
+    console.log(chalk.gray(`Detected region: ${detectedRegion} (from your Signal number)`));
+  }
+
   // Save config
-  const config = { signalNumber, signalApiUrl };
+  const config = {
+    signalNumber,
+    signalApiUrl,
+    ...(detectedRegion ? { region: detectedRegion } : {}),
+  };
   const fs = await import('fs');
   fs.writeFileSync('switchsignal.config.json', JSON.stringify(config, null, 2));
   console.log(chalk.green('Configuration saved to switchsignal.config.json'));
