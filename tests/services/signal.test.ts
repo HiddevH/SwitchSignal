@@ -14,6 +14,19 @@ jest.mock('fs', () => ({
 import * as fs from 'fs';
 const mockedFs = fs as jest.Mocked<typeof fs>;
 
+// Mock child_process for getUserStatus docker fallback
+jest.mock('child_process', () => ({
+  execFile: jest.fn(),
+}));
+import { execFile } from 'child_process';
+const mockedExecFile = execFile as unknown as jest.Mock;
+
+// Mock delay to speed up tests
+jest.mock('../../src/utils/delay', () => ({
+  humanDelay: jest.fn().mockResolvedValue(undefined),
+  sleep: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Suppress chalk/console output in tests
 beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
@@ -231,6 +244,136 @@ describe('SignalService', () => {
 
       const groups = await service.listGroups();
       expect(groups[0].memberCount).toBe(0);
+    });
+  });
+
+  describe('getUserStatus', () => {
+    it('uses REST API when available', async () => {
+      mockClient.post.mockResolvedValue({
+        data: [
+          { number: '+31612345678', isRegistered: true },
+          { number: '+31687654321', isRegistered: false },
+        ],
+      });
+
+      const result = await service.getUserStatus(['+31612345678', '+31687654321']);
+
+      expect(mockClient.post).toHaveBeenCalledWith('/v1/accounts/+31612345678/contacts', {
+        recipients: ['+31612345678', '+31687654321'],
+      });
+      expect(result).toEqual([
+        { number: '+31612345678', isRegistered: true },
+        { number: '+31687654321', isRegistered: false },
+      ]);
+    });
+
+    it('handles alternative field names in REST response', async () => {
+      mockClient.post.mockResolvedValue({
+        data: [{ recipient: '+31612345678', registered: true }],
+      });
+
+      const result = await service.getUserStatus(['+31612345678']);
+      expect(result[0]).toEqual({ number: '+31612345678', isRegistered: true });
+    });
+
+    it('falls back to docker exec when REST endpoint fails', async () => {
+      mockClient.post.mockRejectedValue(new Error('404'));
+
+      mockedExecFile.mockImplementation(
+        (_cmd: string, _args: string[], callback: (err: any, result: any) => void) => {
+          callback(null, {
+            stdout: JSON.stringify([
+              { number: '+31612345678', isRegistered: true },
+            ]),
+          });
+        }
+      );
+
+      const result = await service.getUserStatus(['+31612345678']);
+      expect(result).toEqual([{ number: '+31612345678', isRegistered: true }]);
+    });
+
+    it('throws when both REST and docker fail', async () => {
+      mockClient.post.mockRejectedValue(new Error('404'));
+
+      mockedExecFile.mockImplementation(
+        (_cmd: string, _args: string[], callback: (err: any, result: any) => void) => {
+          callback(new Error('docker not available'), null);
+        }
+      );
+
+      await expect(service.getUserStatus(['+31612345678'])).rejects.toThrow(
+        'Failed to check Signal registration'
+      );
+    });
+  });
+
+  describe('checkRegistrationBatch', () => {
+    it('deduplicates phone numbers', async () => {
+      mockClient.post.mockResolvedValue({
+        data: [{ number: '+31612345678', isRegistered: true }],
+      });
+
+      const result = await service.checkRegistrationBatch(
+        ['+31612345678', '+31612345678', '+31612345678'],
+        10
+      );
+
+      // Should only check unique numbers
+      expect(mockClient.post).toHaveBeenCalledTimes(1);
+      expect(result.get('+31612345678')).toBe(true);
+    });
+
+    it('batches requests according to batchSize', async () => {
+      const numbers = Array.from({ length: 25 }, (_, i) => `+3160000000${String(i).padStart(2, '0')}`);
+
+      mockClient.post.mockImplementation(async (_url: string, data: any) => ({
+        data: data.recipients.map((n: string) => ({ number: n, isRegistered: true })),
+      }));
+
+      await service.checkRegistrationBatch(numbers, 10);
+
+      // 25 numbers / 10 batch size = 3 batches
+      expect(mockClient.post).toHaveBeenCalledTimes(3);
+    });
+
+    it('calls onProgress callback', async () => {
+      const numbers = ['+31600000001', '+31600000002', '+31600000003'];
+      mockClient.post.mockResolvedValue({
+        data: numbers.map((n) => ({ number: n, isRegistered: true })),
+      });
+
+      const onProgress = jest.fn();
+      await service.checkRegistrationBatch(numbers, 10, onProgress);
+
+      expect(onProgress).toHaveBeenCalledWith(3, 3);
+    });
+
+    it('marks numbers as false when a batch fails', async () => {
+      mockClient.post.mockRejectedValue(new Error('timeout'));
+      mockedExecFile.mockImplementation(
+        (_cmd: string, _args: string[], callback: (err: any, result: any) => void) => {
+          callback(new Error('docker not available'), null);
+        }
+      );
+
+      const result = await service.checkRegistrationBatch(['+31612345678'], 10);
+      expect(result.get('+31612345678')).toBe(false);
+    });
+
+    it('returns a Map with all results', async () => {
+      mockClient.post.mockResolvedValue({
+        data: [
+          { number: '+31600000001', isRegistered: true },
+          { number: '+31600000002', isRegistered: false },
+        ],
+      });
+
+      const result = await service.checkRegistrationBatch(['+31600000001', '+31600000002'], 10);
+
+      expect(result.size).toBe(2);
+      expect(result.get('+31600000001')).toBe(true);
+      expect(result.get('+31600000002')).toBe(false);
     });
   });
 });

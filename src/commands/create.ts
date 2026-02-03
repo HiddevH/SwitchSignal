@@ -13,7 +13,7 @@ function loadConfig(): { signalNumber: string; signalApiUrl: string } | null {
   }
 }
 
-export async function createCommand(): Promise<void> {
+export async function createCommand(options: { ready?: boolean } = {}): Promise<void> {
   console.log(chalk.bold('\n=== SwitchSignal — Create Signal Groups ===\n'));
 
   const config = loadConfig();
@@ -32,7 +32,20 @@ export async function createCommand(): Promise<void> {
   const ok = await signal.verifyConnection();
   if (!ok) return;
 
-  const pending = migration.getGroupsPendingCreation();
+  let pending = migration.getGroupsPendingCreation();
+
+  // If --ready flag is used, only create groups where readiness is "ready"
+  if (options.ready) {
+    pending = pending.filter(
+      (g) => g.readiness?.status === 'ready'
+    );
+    if (pending.length === 0) {
+      console.log(chalk.yellow('No groups with 100% Signal readiness pending creation.'));
+      console.log(chalk.gray('Run `switchsignal ready` to check readiness.'));
+      return;
+    }
+    console.log(chalk.gray(`(Filtering to ${pending.length} groups with 100% readiness)\n`));
+  }
 
   if (pending.length === 0) {
     console.log(chalk.yellow('No groups pending creation. Nothing to do.'));

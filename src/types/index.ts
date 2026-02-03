@@ -2,6 +2,8 @@ export interface Member {
   phone: string;
   name: string;
   isAdmin: boolean;
+  signalRegistered?: boolean;
+  signalCheckedAt?: string;
 }
 
 export interface GroupInfo {
@@ -15,6 +17,18 @@ export interface GroupInfo {
   signalGroupId: string | null;
   signalInviteLink: string | null;
   status: 'pending' | 'signal_created' | 'notified' | 'completed';
+  readiness?: GroupReadiness;
+}
+
+export type ReadinessStatus = 'ready' | 'almost' | 'not_ready';
+
+export interface GroupReadiness {
+  total: number;
+  onSignal: number;
+  missing: Array<{ phone: string; name: string }>;
+  percentage: number;
+  status: ReadinessStatus;
+  checkedAt: string;
 }
 
 export interface MigrationState {

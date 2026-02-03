@@ -3,6 +3,7 @@ import { GroupInvite, Language } from '../types';
 interface Templates {
   personal: (name: string, groups: GroupInvite[]) => string;
   group: (inviteLink: string) => string;
+  nudge: (name: string, groupNames: string[]) => string;
 }
 
 const templates: Record<Language, Templates> = {
@@ -24,6 +25,15 @@ Tot daar! 🙌`,
 Klik hier om lid te worden: ${inviteLink}
 
 Installeer Signal: https://signal.org/install`,
+
+    nudge: (name: string, groupNames: string[]) =>
+      `Hey ${name}! 👋
+
+${groupNames.length === 1 ? `Onze groep "${groupNames[0]}" is bijna klaar` : `Onze groepen ${groupNames.map((n) => `"${n}"`).join(', ')} zijn bijna klaar`} om over te stappen naar Signal — je bent een van de laatsten die het nog niet heeft geïnstalleerd.
+
+Download het hier: https://signal.org/install
+
+Zodra je het hebt, kunnen we allemaal overstappen! 🙌`,
   },
 
   en: {
@@ -44,6 +54,15 @@ See you there! 🙌`,
 Join here: ${inviteLink}
 
 Install Signal: https://signal.org/install`,
+
+    nudge: (name: string, groupNames: string[]) =>
+      `Hey ${name}! 👋
+
+${groupNames.length === 1 ? `Our group "${groupNames[0]}" is almost ready` : `Our groups ${groupNames.map((n) => `"${n}"`).join(', ')} are almost ready`} to move to Signal — you're one of the last people who hasn't installed it yet.
+
+Get it here: https://signal.org/install
+
+Once you do, we can all switch together! 🙌`,
   },
 };
 

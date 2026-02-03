@@ -6,7 +6,12 @@ import { getTemplates } from '../utils/templates';
 import { humanDelay } from '../utils/delay';
 import { GroupInvite, Language, NotifyStrategy } from '../types';
 
-export async function notifyCommand(): Promise<void> {
+export async function notifyCommand(options: { nudge?: boolean } = {}): Promise<void> {
+  if (options.nudge) {
+    await nudgeCommand();
+    return;
+  }
+
   console.log(chalk.bold('\n=== SwitchSignal — Notify Members ===\n'));
 
   const migration = new MigrationService();
@@ -139,5 +144,101 @@ export async function notifyCommand(): Promise<void> {
   console.log(chalk.bold.green('\n✓ Notifications sent!'));
   console.log(chalk.gray('Run `switchsignal status` to check migration progress.\n'));
 
+  await wa.disconnect();
+}
+
+async function nudgeCommand(): Promise<void> {
+  console.log(chalk.bold('\n=== SwitchSignal — Nudge Missing Members ===\n'));
+
+  const migration = new MigrationService();
+  if (!migration.exists()) {
+    console.log(chalk.red('No migration.json found. Run `switchsignal scan` first.'));
+    return;
+  }
+
+  // Find "almost" groups that have readiness data
+  const groups = migration.getGroups().filter(
+    (g) => g.migrate && g.readiness?.status === 'almost' && g.readiness.missing.length > 0
+  );
+
+  if (groups.length === 0) {
+    console.log(chalk.yellow('No "almost ready" groups with missing members found.'));
+    console.log(chalk.gray('Run `switchsignal ready` first to check readiness.'));
+    return;
+  }
+
+  console.log(`${groups.length} groups with missing members.\n`);
+
+  for (const g of groups) {
+    const missing = g.readiness!.missing;
+    console.log(`  ${g.name}: ${missing.length} missing`);
+    for (const m of missing) {
+      const display = m.name !== m.phone ? `${m.name} (${m.phone})` : m.phone;
+      console.log(chalk.gray(`    - ${display}`));
+    }
+  }
+
+  const { language } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'language',
+      message: 'Message language:',
+      choices: [
+        { name: 'Dutch (Nederlands)', value: 'nl' },
+        { name: 'English', value: 'en' },
+      ],
+    },
+  ]);
+
+  const { confirm } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirm',
+      message: `Send nudge messages to missing members via WhatsApp?`,
+      default: false,
+    },
+  ]);
+
+  if (!confirm) {
+    console.log(chalk.red('Aborted.'));
+    return;
+  }
+
+  const wa = new WhatsAppService();
+  console.log('\nConnecting to WhatsApp...');
+  await wa.connect();
+
+  const templates = getTemplates(language as Language);
+
+  // Deduplicate: one nudge per person with all their group names
+  const memberNudges = new Map<string, { name: string; groupNames: string[] }>();
+
+  for (const group of groups) {
+    for (const missing of group.readiness!.missing) {
+      if (!memberNudges.has(missing.phone)) {
+        memberNudges.set(missing.phone, { name: missing.name, groupNames: [] });
+      }
+      memberNudges.get(missing.phone)!.groupNames.push(group.name);
+    }
+  }
+
+  let sent = 0;
+  const total = memberNudges.size;
+
+  for (const [phone, data] of memberNudges) {
+    const message = templates.nudge(data.name, data.groupNames);
+    try {
+      await wa.sendPersonalMessage(phone, message);
+      sent++;
+      console.log(`  ${chalk.green('✓')} ${data.name} (${phone}) [${sent}/${total}]`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`  ${chalk.red('✗')} ${data.name} (${phone}): ${msg}`);
+    }
+
+    await humanDelay();
+  }
+
+  console.log(chalk.bold.green(`\n✓ Nudge messages sent to ${sent} members!`));
   await wa.disconnect();
 }

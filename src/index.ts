@@ -7,6 +7,7 @@ import { reviewCommand } from './commands/review';
 import { createCommand } from './commands/create';
 import { notifyCommand } from './commands/notify';
 import { statusCommand } from './commands/status';
+import { readyCommand } from './commands/ready';
 
 const program = new Command();
 
@@ -52,11 +53,24 @@ program
   });
 
 program
-  .command('create')
-  .description('Create Signal groups for selected WhatsApp groups')
+  .command('ready')
+  .description('Check which groups are ready to migrate (members on Signal)')
   .action(async () => {
     try {
-      await createCommand();
+      await readyCommand();
+    } catch (err) {
+      console.error('Error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('create')
+  .description('Create Signal groups for selected WhatsApp groups')
+  .option('--ready', 'Only create groups where all members are on Signal')
+  .action(async (opts) => {
+    try {
+      await createCommand({ ready: opts.ready });
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);
@@ -66,9 +80,10 @@ program
 program
   .command('notify')
   .description('Send Signal invite links to WhatsApp members')
-  .action(async () => {
+  .option('--nudge', 'Send nudge messages to members not yet on Signal')
+  .action(async (opts) => {
     try {
-      await notifyCommand();
+      await notifyCommand({ nudge: opts.nudge });
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);
       process.exit(1);

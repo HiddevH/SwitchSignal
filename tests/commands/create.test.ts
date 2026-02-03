@@ -205,4 +205,96 @@ describe('createCommand', () => {
       status: 'signal_created',
     });
   });
+
+  it('filters to ready-only groups with --ready flag', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ signalNumber: '+31600000000', signalApiUrl: 'http://localhost:8080' })
+    );
+    mockedFs.existsSync.mockReturnValue(false);
+
+    mockMigration.getGroupsPendingCreation.mockReturnValue([
+      {
+        waGroupId: '1@g.us',
+        name: 'Ready Group',
+        description: '',
+        memberCount: 3,
+        members: [],
+        avatarPath: null,
+        migrate: true,
+        signalGroupId: null,
+        signalInviteLink: null,
+        status: 'pending',
+        readiness: {
+          total: 3,
+          onSignal: 3,
+          missing: [],
+          percentage: 100,
+          status: 'ready',
+          checkedAt: '2026-01-01T00:00:00Z',
+        },
+      },
+      {
+        waGroupId: '2@g.us',
+        name: 'Not Ready Group',
+        description: '',
+        memberCount: 5,
+        members: [],
+        avatarPath: null,
+        migrate: true,
+        signalGroupId: null,
+        signalInviteLink: null,
+        status: 'pending',
+        readiness: {
+          total: 5,
+          onSignal: 2,
+          missing: [],
+          percentage: 40,
+          status: 'not_ready',
+          checkedAt: '2026-01-01T00:00:00Z',
+        },
+      },
+    ]);
+
+    await createCommand({ ready: true });
+
+    // Should only create the ready group
+    expect(mockMigration.updateGroup).toHaveBeenCalledTimes(1);
+    expect(mockMigration.updateGroup).toHaveBeenCalledWith('1@g.us', expect.objectContaining({
+      status: 'signal_created',
+    }));
+  });
+
+  it('shows message when no ready groups found with --ready flag', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ signalNumber: '+31600000000', signalApiUrl: 'http://localhost:8080' })
+    );
+
+    mockMigration.getGroupsPendingCreation.mockReturnValue([
+      {
+        waGroupId: '1@g.us',
+        name: 'Not Ready',
+        description: '',
+        memberCount: 5,
+        members: [],
+        avatarPath: null,
+        migrate: true,
+        signalGroupId: null,
+        signalInviteLink: null,
+        status: 'pending',
+        readiness: {
+          total: 5,
+          onSignal: 2,
+          missing: [],
+          percentage: 40,
+          status: 'not_ready',
+          checkedAt: '2026-01-01T00:00:00Z',
+        },
+      },
+    ]);
+
+    await createCommand({ ready: true });
+
+    // Should not create anything
+    expect(mockSignal.createGroup).not.toHaveBeenCalled();
+  });
 });

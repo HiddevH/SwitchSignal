@@ -110,6 +110,53 @@ describe('getTemplates', () => {
     });
   });
 
+  describe('nudge template', () => {
+    it('includes name and single group in Dutch', () => {
+      const nl = getTemplates('nl');
+      const result = nl.nudge('Jan', ['Familiegroep']);
+      expect(result).toContain('Jan');
+      expect(result).toContain('Familiegroep');
+      expect(result).toContain('https://signal.org/install');
+    });
+
+    it('includes name and multiple groups in Dutch', () => {
+      const nl = getTemplates('nl');
+      const result = nl.nudge('Jan', ['Familiegroep', 'Sportclub']);
+      expect(result).toContain('Jan');
+      expect(result).toContain('Familiegroep');
+      expect(result).toContain('Sportclub');
+    });
+
+    it('includes name and single group in English', () => {
+      const en = getTemplates('en');
+      const result = en.nudge('John', ['Family']);
+      expect(result).toContain('John');
+      expect(result).toContain('Family');
+      expect(result).toContain('https://signal.org/install');
+    });
+
+    it('includes name and multiple groups in English', () => {
+      const en = getTemplates('en');
+      const result = en.nudge('John', ['Family', 'Sports']);
+      expect(result).toContain('John');
+      expect(result).toContain('Family');
+      expect(result).toContain('Sports');
+    });
+
+    it('uses singular phrasing for single group in English', () => {
+      const en = getTemplates('en');
+      const result = en.nudge('John', ['Family']);
+      expect(result).toContain('Our group "Family" is almost ready');
+    });
+
+    it('uses plural phrasing for multiple groups in English', () => {
+      const en = getTemplates('en');
+      const result = en.nudge('John', ['Family', 'Sports']);
+      expect(result).toContain('Our groups');
+      expect(result).toContain('are almost ready');
+    });
+  });
+
   it('returns different templates for nl and en', () => {
     const nl = getTemplates('nl');
     const en = getTemplates('en');
