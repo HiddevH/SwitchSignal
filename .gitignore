@@ -1,0 +1,7 @@
+node_modules/
+dist/
+auth/
+signal-data/
+migration.json
+*.log
+.env
