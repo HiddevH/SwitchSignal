@@ -6,6 +6,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
+import pino from 'pino';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as qrcode from 'qrcode-terminal';
@@ -19,6 +20,7 @@ export class WhatsAppService {
   private socket: WASocket | null = null;
   private connectionReady: Promise<void> | null = null;
   private resolveConnection: (() => void) | null = null;
+  private intentionalClose = false;
 
   /**
    * Connect to WhatsApp. Displays QR code if not previously authenticated.
@@ -34,11 +36,14 @@ export class WhatsAppService {
       this.resolveConnection = resolve;
     });
 
+    this.intentionalClose = false;
+
     this.socket = makeWASocket({
       version,
       auth: state,
       printQRInTerminal: false,
       generateHighQualityLinkPreview: false,
+      logger: pino({ level: 'silent' }) as any,
     });
 
     this.socket.ev.on('creds.update', saveCreds);
@@ -52,6 +57,8 @@ export class WhatsAppService {
       }
 
       if (connection === 'close') {
+        if (this.intentionalClose) return;
+
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
@@ -146,6 +153,7 @@ export class WhatsAppService {
    * Disconnect from WhatsApp.
    */
   async disconnect(): Promise<void> {
+    this.intentionalClose = true;
     this.socket?.end(undefined);
     this.socket = null;
   }
