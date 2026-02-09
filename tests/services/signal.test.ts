@@ -73,11 +73,29 @@ describe('SignalService', () => {
   });
 
   describe('verifyConnection', () => {
-    it('returns true when API responds', async () => {
-      mockClient.get.mockResolvedValue({ data: { versions: ['0.12.0'] } });
+    function mockGetRoutes(routes: Record<string, any>) {
+      mockClient.get.mockImplementation((url: string) => {
+        if (url in routes) {
+          const val = routes[url];
+          if (val instanceof Error) return Promise.reject(val);
+          return Promise.resolve(val);
+        }
+        return Promise.resolve({ data: {} });
+      });
+    }
+
+    it('returns true when all checks pass', async () => {
+      mockGetRoutes({
+        '/v1/about': { data: { versions: ['0.12.0'] } },
+        '/v1/accounts': { data: ['+31612345678'] },
+        '/v1/groups/+31612345678': { data: [] },
+      });
+
       const result = await service.verifyConnection();
       expect(result).toBe(true);
       expect(mockClient.get).toHaveBeenCalledWith('/v1/about');
+      expect(mockClient.get).toHaveBeenCalledWith('/v1/accounts');
+      expect(mockClient.get).toHaveBeenCalledWith('/v1/groups/+31612345678');
     });
 
     it('returns false when API is unreachable', async () => {
@@ -86,8 +104,86 @@ describe('SignalService', () => {
       expect(result).toBe(false);
     });
 
+    it('returns false when no accounts are registered', async () => {
+      mockGetRoutes({
+        '/v1/about': { data: { versions: ['0.12.0'] } },
+        '/v1/accounts': { data: [] },
+      });
+
+      const result = await service.verifyConnection();
+      expect(result).toBe(false);
+    });
+
+    it('returns false when account number is not in registered accounts', async () => {
+      mockGetRoutes({
+        '/v1/about': { data: { versions: ['0.12.0'] } },
+        '/v1/accounts': { data: ['+49171000000'] },
+      });
+
+      const result = await service.verifyConnection();
+      expect(result).toBe(false);
+    });
+
+    it('returns false when account gets 401 on group listing', async () => {
+      const authError = new Error('Unauthorized') as any;
+      authError.response = { status: 401 };
+
+      mockGetRoutes({
+        '/v1/about': { data: { versions: ['0.12.0'] } },
+        '/v1/accounts': { data: ['+31612345678'] },
+        '/v1/groups/+31612345678': authError,
+      });
+
+      const result = await service.verifyConnection();
+      expect(result).toBe(false);
+    });
+
+    it('returns false when account gets 404 on group listing', async () => {
+      const notFound = new Error('Not Found') as any;
+      notFound.response = { status: 404 };
+
+      mockGetRoutes({
+        '/v1/about': { data: { versions: ['0.12.0'] } },
+        '/v1/accounts': { data: ['+31612345678'] },
+        '/v1/groups/+31612345678': notFound,
+      });
+
+      const result = await service.verifyConnection();
+      expect(result).toBe(false);
+    });
+
+    it('still returns true when /v1/accounts endpoint is unavailable', async () => {
+      mockGetRoutes({
+        '/v1/about': { data: { versions: ['0.12.0'] } },
+        '/v1/accounts': new Error('404'),
+        '/v1/groups/+31612345678': { data: [] },
+      });
+
+      const result = await service.verifyConnection();
+      expect(result).toBe(true);
+    });
+
+    it('still returns true when group listing has non-auth error', async () => {
+      const timeout = new Error('timeout') as any;
+      timeout.response = { status: 500 };
+
+      mockGetRoutes({
+        '/v1/about': { data: { versions: ['0.12.0'] } },
+        '/v1/accounts': { data: ['+31612345678'] },
+        '/v1/groups/+31612345678': timeout,
+      });
+
+      const result = await service.verifyConnection();
+      expect(result).toBe(true);
+    });
+
     it('handles response without versions field', async () => {
-      mockClient.get.mockResolvedValue({ data: {} });
+      mockGetRoutes({
+        '/v1/about': { data: {} },
+        '/v1/accounts': { data: ['+31612345678'] },
+        '/v1/groups/+31612345678': { data: [] },
+      });
+
       const result = await service.verifyConnection();
       expect(result).toBe(true);
     });

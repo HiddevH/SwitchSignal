@@ -12,9 +12,11 @@ const DEFAULT_BASE_URL = 'http://localhost:8080';
 export class SignalService {
   private client: AxiosInstance;
   private accountNumber: string;
+  private baseUrl: string;
 
   constructor(accountNumber: string, baseUrl = DEFAULT_BASE_URL) {
     this.accountNumber = accountNumber;
+    this.baseUrl = baseUrl;
     this.client = axios.create({
       baseURL: baseUrl,
       timeout: 30000,
@@ -24,18 +26,65 @@ export class SignalService {
 
   /**
    * Verify the Signal API is reachable and the account is registered.
+   * Performs three checks: API reachability, account registration, and operational test.
    */
   async verifyConnection(): Promise<boolean> {
+    // Step 1: Is the API reachable?
     try {
       const res = await this.client.get('/v1/about');
       console.log(chalk.green(`Signal API version: ${res.data.versions?.[0] || 'unknown'}`));
-      return true;
     } catch {
       console.log(
         chalk.red('Cannot reach Signal API. Is the Docker container running on port 8080?')
       );
       return false;
     }
+
+    // Step 2: Is the account registered?
+    try {
+      const res = await this.client.get('/v1/accounts');
+      const accounts: string[] = res.data || [];
+
+      if (accounts.length === 0) {
+        console.log(chalk.red('No Signal accounts registered in the API.'));
+        console.log(chalk.yellow('Register your number first:'));
+        console.log(chalk.gray(`  curl -X POST '${this.baseUrl}/v1/register/${this.accountNumber}'`));
+        console.log(chalk.gray(`  curl -X POST '${this.baseUrl}/v1/register/${this.accountNumber}/verify/<code>'`));
+        return false;
+      }
+
+      if (!accounts.includes(this.accountNumber)) {
+        console.log(chalk.red(`Account ${this.accountNumber} is not registered in the Signal API.`));
+        console.log(chalk.yellow(`Registered accounts: ${accounts.join(', ')}`));
+        return false;
+      }
+
+      console.log(chalk.green(`Account ${this.accountNumber} is registered.`));
+    } catch {
+      // /v1/accounts may not exist in all API versions — skip gracefully
+      console.log(chalk.yellow('Could not verify account registration (endpoint not available).'));
+    }
+
+    // Step 3: Can the account actually perform operations?
+    try {
+      await this.client.get(`/v1/groups/${this.accountNumber}`);
+      console.log(chalk.green('Signal API: operational.'));
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        console.log(chalk.red(`Account ${this.accountNumber} is not authorized. Is it fully verified?`));
+        return false;
+      }
+      if (status === 404) {
+        console.log(chalk.red(`Account ${this.accountNumber} not found by the Signal API.`));
+        console.log(chalk.yellow('The number may not be registered. Run signal-cli register first.'));
+        return false;
+      }
+      // Other errors (network hiccup, empty response) — warn but don't block
+      console.log(chalk.yellow(`Warning: could not list groups (${err?.message || 'unknown error'}). Proceeding anyway.`));
+    }
+
+    return true;
   }
 
   /**
