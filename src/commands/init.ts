@@ -65,12 +65,119 @@ export async function initCommand(): Promise<void> {
   ]);
 
   const signal = new SignalService(signalNumber, signalApiUrl);
-  const signalOk = await signal.verifyConnection();
 
-  if (!signalOk) {
-    console.log(chalk.red('\nCould not connect to Signal API.'));
+  // Check if API is reachable
+  const reachable = await signal.isReachable();
+  if (!reachable) {
+    console.log(chalk.red('\nCannot reach Signal API.'));
     console.log(chalk.yellow('Make sure the Docker container is running:'));
     console.log(chalk.gray('  docker compose up -d'));
+    await wa.disconnect();
+    return;
+  }
+  console.log(chalk.green('Signal API is reachable.'));
+
+  // Check if account is already registered
+  let accounts: string[] = [];
+  try {
+    accounts = await signal.getAccounts();
+  } catch {
+    // endpoint may not be available
+  }
+
+  if (!accounts.includes(signalNumber)) {
+    console.log(chalk.yellow(`\nAccount ${signalNumber} is not yet registered in the Signal API.`));
+    console.log(chalk.yellow('You need to link or register your Signal account.\n'));
+
+    const { method } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'method',
+        message: 'How do you want to connect your Signal account?',
+        choices: [
+          { name: 'Link as secondary device (scan QR code in Signal app — recommended)', value: 'link' },
+          { name: 'Register with SMS verification code', value: 'register' },
+        ],
+      },
+    ]);
+
+    if (method === 'link') {
+      console.log(chalk.blue('\nGenerating QR code for linking...'));
+      console.log(chalk.gray('Open Signal on your phone → Settings → Linked Devices → Link New Device\n'));
+
+      try {
+        const qrUri = await signal.getLinkQrUri();
+        const qrcode = await import('qrcode-terminal');
+        qrcode.generate(qrUri, { small: true });
+        console.log(chalk.yellow('\nScan the QR code above with your Signal app.'));
+        console.log('Waiting for confirmation...\n');
+
+        // Poll for the account to appear
+        let linked = false;
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const updated = await signal.getAccounts();
+            if (updated.includes(signalNumber)) {
+              linked = true;
+              break;
+            }
+          } catch {
+            // keep polling
+          }
+        }
+
+        if (!linked) {
+          console.log(chalk.red('Linking timed out. Try again with `switchsignal init`.'));
+          await wa.disconnect();
+          return;
+        }
+        console.log(chalk.green('Signal account linked!\n'));
+      } catch (err: any) {
+        console.log(chalk.red(`Linking failed: ${err?.message || 'unknown error'}`));
+        console.log(chalk.yellow('You may need to register via SMS instead, or check your Signal API version.'));
+        await wa.disconnect();
+        return;
+      }
+    } else {
+      // SMS registration
+      console.log(chalk.blue('\nSending SMS verification code...'));
+      try {
+        await signal.register();
+        console.log(chalk.green('Verification code sent.\n'));
+      } catch (err: any) {
+        console.log(chalk.red(`Failed to send code: ${err?.message || 'unknown error'}`));
+        await wa.disconnect();
+        return;
+      }
+
+      const { verifyCode } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'verifyCode',
+          message: 'Enter the verification code from SMS (digits only):',
+          validate: (input: string) => {
+            if (/^\d{3,8}$/.test(input.replace(/-/g, ''))) return true;
+            return 'Enter the numeric code you received via SMS';
+          },
+        },
+      ]);
+
+      try {
+        await signal.verifyRegistration(verifyCode.replace(/-/g, ''));
+        console.log(chalk.green('Account verified!\n'));
+      } catch (err: any) {
+        console.log(chalk.red(`Verification failed: ${err?.message || 'unknown error'}`));
+        await wa.disconnect();
+        return;
+      }
+    }
+  }
+
+  // Now run the full verification
+  const signalOk = await signal.verifyConnection();
+  if (!signalOk) {
+    console.log(chalk.red('\nSignal API verification failed after setup.'));
     await wa.disconnect();
     return;
   }

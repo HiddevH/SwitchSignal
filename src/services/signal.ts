@@ -88,6 +88,50 @@ export class SignalService {
   }
 
   /**
+   * Check if the API is reachable (step 1 only).
+   */
+  async isReachable(): Promise<boolean> {
+    try {
+      await this.client.get('/v1/about');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get the list of accounts registered in the Signal API.
+   */
+  async getAccounts(): Promise<string[]> {
+    const res = await this.client.get('/v1/accounts');
+    return res.data || [];
+  }
+
+  /**
+   * Register a new account (sends SMS verification code).
+   */
+  async register(): Promise<void> {
+    await this.client.post(`/v1/register/${this.accountNumber}`);
+  }
+
+  /**
+   * Verify a registration with the SMS code.
+   */
+  async verifyRegistration(code: string): Promise<void> {
+    await this.client.post(`/v1/register/${this.accountNumber}/verify/${code}`);
+  }
+
+  /**
+   * Get a device linking URI (for linking as secondary device via QR code).
+   */
+  async getLinkQrUri(): Promise<string> {
+    const res = await this.client.get(`/v1/qrcodelink?device_name=switchsignal`, {
+      timeout: 60000,
+    });
+    return res.data;
+  }
+
+  /**
    * Create a new Signal group.
    */
   async createGroup(
