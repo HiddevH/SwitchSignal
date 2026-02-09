@@ -1,6 +1,15 @@
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { MigrationService } from '../services/migration';
+import { GroupInfo } from '../types';
+
+function readinessLabel(group: GroupInfo): string {
+  const r = group.readiness;
+  if (!r) return '';
+  if (r.status === 'ready') return chalk.green(` — ${r.onSignal}/${r.total} on Signal ✓`);
+  if (r.status === 'almost') return chalk.yellow(` — ${r.onSignal}/${r.total} on Signal`);
+  return chalk.red(` — ${r.onSignal}/${r.total} on Signal`);
+}
 
 export async function reviewCommand(): Promise<void> {
   console.log(chalk.bold('\n=== SwitchSignal — Review Groups ===\n'));
@@ -19,7 +28,14 @@ export async function reviewCommand(): Promise<void> {
     return;
   }
 
+  const hasReadiness = groups.some((g) => g.readiness);
+
   console.log(`Found ${groups.length} scanned groups.\n`);
+
+  if (hasReadiness) {
+    console.log(chalk.gray('Signal compatibility is shown per group. Groups where all members'));
+    console.log(chalk.gray('are on Signal can switch without anyone missing.\n'));
+  }
 
   // Select which groups to migrate
   const { selectedGroups } = await inquirer.prompt([
@@ -28,7 +44,7 @@ export async function reviewCommand(): Promise<void> {
       name: 'selectedGroups',
       message: 'Select groups to migrate to Signal:',
       choices: groups.map((g) => ({
-        name: `${g.name} (${g.memberCount} members)${g.status !== 'pending' ? ` [${g.status}]` : ''}`,
+        name: `${g.name} (${g.memberCount} members)${readinessLabel(g)}${g.status !== 'pending' ? ` [${g.status}]` : ''}`,
         value: g.waGroupId,
         checked: g.migrate,
       })),
